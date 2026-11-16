@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 允許 Android App 使用網路傳送 MQTT -->
+    <uses-permission
+        android:name="android.permission.INTERNET" />
+
+    <!-- 允許手機作為 USB Host 連接 EVK -->
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="true" />
+
+    <application
+        android:allowBackup="true"
+        android:label="EVK GNSS Receiver"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.EVKGNSSReceiver">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+        </activity>
+
+    </application>
+
+</manifest>
