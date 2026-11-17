@@ -6,6 +6,10 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.hardware.usb.UsbManager
 import android.os.Build
 import android.os.Bundle
@@ -30,6 +34,31 @@ class MainActivity : AppCompatActivity() {
         "com.example.evkgnssreceiver.USB_PERMISSION"
 
     private lateinit var usbManager: UsbManager
+
+    private val sensorManager by lazy {
+        getSystemService(Context.SENSOR_SERVICE) as SensorManager
+    }
+
+    @Volatile
+    private var latestAcceleration: ImuSample? = null
+
+    @Volatile
+    private var latestAngularVelocity: ImuSample? = null
+
+    private val imuListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            val (x, y, z) = event.values
+            if (!x.isFinite() || !y.isFinite() || !z.isFinite()) return
+
+            val sample = ImuSample(event.timestamp, x, y, z)
+            when (event.sensor.type) {
+                Sensor.TYPE_ACCELEROMETER -> latestAcceleration = sample
+                Sensor.TYPE_GYROSCOPE -> latestAngularVelocity = sample
+            }
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) = Unit
+    }
 
     // 目前開啟的 EVK USB Serial Port
     private var serialPort: UsbSerialPort? = null
@@ -135,6 +164,22 @@ class MainActivity : AppCompatActivity() {
         }
 
         createUi()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        for (type in listOf(Sensor.TYPE_ACCELEROMETER, Sensor.TYPE_GYROSCOPE)) {
+            sensorManager.getDefaultSensor(type)?.let { sensor ->
+                sensorManager.registerListener(imuListener, sensor, SensorManager.SENSOR_DELAY_GAME)
+            }
+        }
+    }
+
+    override fun onStop() {
+        sensorManager.unregisterListener(imuListener)
+        latestAcceleration = null
+        latestAngularVelocity = null
+        super.onStop()
     }
 
     // --------------------------------------------------
@@ -553,6 +598,8 @@ class MainActivity : AppCompatActivity() {
 
                     // 解析完整 UBX-NAV-PVT 封包
                     navPvtParser.feed(received) { json ->
+                        // shortcut: 每筆 GNSS 只附上最新樣本，需要完整 IMU 序列時再獨立記錄。
+                        json.put("imu", imuJson(latestAcceleration, latestAngularVelocity))
 
                         // 保留最新一筆 JSON 供畫面顯示
                         latestJson = json.toString(2)

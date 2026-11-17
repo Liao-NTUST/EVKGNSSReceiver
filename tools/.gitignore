@@ -1,0 +1,4 @@
+/gnss_data/
+/mqtt_connection_settings.json
+/mqtt_connection_settings.json.tmp
+/__pycache__/
