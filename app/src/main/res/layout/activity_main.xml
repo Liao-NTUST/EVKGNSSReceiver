@@ -1,19 +1,633 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!--
+    主畫面：上方是定位狀態，下面依操作順序排列三張連線卡片
+    （EVK USB → MQTT → NTRIP），最後是可展開的原始資料。
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
-    android:id="@+id/main"
+    android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground"
+    android:orientation="vertical"
     tools:context=".MainActivity">
 
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Hello World!"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        app:title="EVK GNSS Receiver" />
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="16dp"
+            android:paddingTop="4dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="24dp">
+
+            <!-- ==================== 定位狀態 ==================== -->
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/rtkCard"
+                style="@style/Widget.Material3.CardView.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:strokeWidth="2dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="定位狀態"
+                        android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+                    <TextView
+                        android:id="@+id/rtkHeadline"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="EVK 未連接"
+                        android:textAppearance="?attr/textAppearanceHeadlineSmall"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/rtkHint"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:text="連接 EVK 後開始顯示"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/metricSatellites"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="—"
+                                android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="使用衛星"
+                                android:textAppearance="?attr/textAppearanceLabelSmall" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/metricAccuracy"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="—"
+                                android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="水平精度"
+                                android:textAppearance="?attr/textAppearanceLabelSmall" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/metricCorrectionAge"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="—"
+                                android:textAppearance="?attr/textAppearanceTitleLarge" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="修正資料年齡"
+                                android:textAppearance="?attr/textAppearanceLabelSmall" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ==================== 即時速度與方位（預設收合） ==================== -->
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="8dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/motionToggleButton"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="start|center_vertical"
+                        android:text="▸ 即時速度與方位（GNSS + IMU）" />
+
+                    <LinearLayout
+                        android:id="@+id/motionContent"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_horizontal"
+                        android:orientation="vertical"
+                        android:paddingStart="8dp"
+                        android:paddingEnd="8dp"
+                        android:paddingBottom="8dp"
+                        android:visibility="gone">
+
+                        <LinearLayout
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:baselineAligned="true"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:id="@+id/motionSpeed"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFeatureSettings="tnum"
+                                android:text="—"
+                                android:textAppearance="?attr/textAppearanceDisplaySmall"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="6dp"
+                                android:text="km/h"
+                                android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/motionSpeedMps"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFeatureSettings="tnum"
+                            android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                        <TextView
+                            android:id="@+id/motionSource"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center"
+                            android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+                        <com.example.evkgnssreceiver.CompassView
+                            android:id="@+id/compassView"
+                            android:layout_width="240dp"
+                            android:layout_height="240dp"
+                            android:layout_marginTop="12dp" />
+
+                        <TextView
+                            android:id="@+id/motionHeading"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFeatureSettings="tnum"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <TextView
+                            android:id="@+id/motionDetail"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:gravity="center"
+                            android:textAppearance="?attr/textAppearanceBodySmall" />
+
+                        <com.google.android.material.button.MaterialButtonToggleGroup
+                            android:id="@+id/compassModeGroup"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            app:checkedButton="@+id/compassNorthUpButton"
+                            app:selectionRequired="true"
+                            app:singleSelection="true">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/compassNorthUpButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="北方朝上" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/compassFollowPhoneButton"
+                                style="@style/Widget.Material3.Button.OutlinedButton"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="跟隨手機" />
+                        </com.google.android.material.button.MaterialButtonToggleGroup>
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ==================== 1. EVK USB ==================== -->
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:id="@+id/usbDot"
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:layout_marginEnd="10dp"
+                            android:background="@drawable/status_dot" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="① EVK USB"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <TextView
+                            android:id="@+id/usbState"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="未連接"
+                            android:textAppearance="?attr/textAppearanceLabelLarge" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/usbDetail"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/usbToggleButton"
+                            style="@style/Widget.Material3.Button"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_weight="1"
+                            android:text="連接 EVK" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/usbDelayButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="延遲補償 0 ms" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ==================== 2. MQTT ==================== -->
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:id="@+id/mqttDot"
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:layout_marginEnd="10dp"
+                            android:background="@drawable/status_dot" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="② MQTT → PC"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <TextView
+                            android:id="@+id/mqttState"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="未連線"
+                            android:textAppearance="?attr/textAppearanceLabelLarge" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/mqttDetail"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/mqttToggleButton"
+                            style="@style/Widget.Material3.Button"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_weight="1"
+                            android:text="連線" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/mqttSettingsButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="MQTT 設定" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ==================== 3. NTRIP ==================== -->
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:id="@+id/ntripDot"
+                            android:layout_width="12dp"
+                            android:layout_height="12dp"
+                            android:layout_marginEnd="10dp"
+                            android:background="@drawable/status_dot" />
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="③ NTRIP 修正（PointPerfect）"
+                            android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                        <TextView
+                            android:id="@+id/ntripState"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="未連線"
+                            android:textAppearance="?attr/textAppearanceLabelLarge" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/ntripDetail"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
+
+                    <com.google.android.material.divider.MaterialDivider
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:layout_marginBottom="12dp" />
+
+                    <!-- 使用時間 -->
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/usageTitle"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="使用時間"
+                            android:textAppearance="?attr/textAppearanceLabelLarge" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/usageResetButton"
+                            style="@style/Widget.Material3.Button.TextButton"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:minHeight="0dp"
+                            android:text="重設本期" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/usageSession"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFeatureSettings="tnum"
+                                android:text="0:00:00"
+                                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="本次"
+                                android:textAppearance="?attr/textAppearanceLabelSmall" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/usagePeriod"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFeatureSettings="tnum"
+                                android:text="0:00:00"
+                                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                            <TextView
+                                android:id="@+id/usagePeriodLabel"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="本期"
+                                android:textAppearance="?attr/textAppearanceLabelSmall" />
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:id="@+id/usageTotal"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFeatureSettings="tnum"
+                                android:text="0:00:00"
+                                android:textAppearance="?attr/textAppearanceTitleMedium" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="總計"
+                                android:textAppearance="?attr/textAppearanceLabelSmall" />
+                        </LinearLayout>
+                    </LinearLayout>
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:text="只計算實際接收修正資料的時間；官方用量以 Thingstream 後台為準"
+                        android:textAppearance="?attr/textAppearanceBodySmall" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/ntripToggleButton"
+                            style="@style/Widget.Material3.Button"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_marginEnd="8dp"
+                            android:layout_weight="1"
+                            android:text="NTRIP 連線" />
+
+                        <com.google.android.material.button.MaterialButton
+                            android:id="@+id/ntripSettingsButton"
+                            style="@style/Widget.Material3.Button.OutlinedButton"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="NTRIP 設定" />
+                    </LinearLayout>
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- ==================== 原始資料（預設收合） ==================== -->
+
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Outlined"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="8dp">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/rawToggleButton"
+                        style="@style/Widget.Material3.Button.TextButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="start|center_vertical"
+                        android:text="▸ 顯示原始資料（最新 JSON）" />
+
+                    <TextView
+                        android:id="@+id/rawDataText"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:padding="8dp"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textIsSelectable="true"
+                        android:typeface="monospace"
+                        android:visibility="gone" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+</LinearLayout>

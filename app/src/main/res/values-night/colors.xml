@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 深色模式使用較亮的顏色，維持對比 -->
+    <color name="status_good">#FF81C784</color>
+    <color name="status_warn">#FFFFB74D</color>
+    <color name="status_bad">#FFE57373</color>
+    <color name="status_idle">#FF9E9E9E</color>
+</resources>

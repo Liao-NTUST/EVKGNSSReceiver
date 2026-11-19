@@ -18,6 +18,9 @@ class UbxNavPvtParser {
     var validPacketCount: Long = 0
         private set
 
+    /** UBX-ACK-ACK / NAK：(是否 ACK, 被確認訊息的 class, 被確認訊息的 id) */
+    var onAck: ((Boolean, Int, Int) -> Unit)? = null
+
     fun feed(bytes: ByteArray, onJson: (JSONObject) -> Unit) {
         for (byte in bytes) pending.add(byte)
 
@@ -50,6 +53,12 @@ class UbxNavPvtParser {
                 val json = parseNavPvt(packet)
                 validPacketCount++
                 onJson(json)
+            } else if (messageClass == 0x05 && payloadLength == 2 && messageId in 0x00..0x01) {
+                onAck?.invoke(
+                    messageId == 0x01,
+                    packet[6].toInt() and 0xFF,
+                    packet[7].toInt() and 0xFF
+                )
             }
             pending.subList(0, packetLength).clear()
         }
@@ -86,6 +95,23 @@ class UbxNavPvtParser {
             else -> "NONE"
         }
 
+        // flags3 bits 4..1：最近一次差分修正資料的年齡（0 = 沒有修正資料）
+        val correctionAge = when ((u2(78) ushr 1) and 0x0F) {
+            0 -> null
+            1 -> "0-1"
+            2 -> "1-2"
+            3 -> "2-5"
+            4 -> "5-10"
+            5 -> "10-15"
+            6 -> "15-20"
+            7 -> "20-30"
+            8 -> "30-45"
+            9 -> "45-60"
+            10 -> "60-90"
+            11 -> "90-120"
+            else -> ">=120"
+        }
+
         val valid = u1(11)
         val gnssUtc: String? = if ((valid and 0x03) == 0x03) {
             try {
@@ -112,13 +138,18 @@ class UbxNavPvtParser {
             put("horizontal_accuracy_m", jsonValue(if (hasPosition) u4(40) / 1000.0 else null))
             put("vertical_accuracy_m", jsonValue(if (hasPosition) u4(44) / 1000.0 else null))
             put("pdop", u2(76) * 0.01)
+            put("velocity_n_mps", jsonValue(if (hasPosition) i4(48) / 1000.0 else null))
+            put("velocity_e_mps", jsonValue(if (hasPosition) i4(52) / 1000.0 else null))
+            put("velocity_d_mps", jsonValue(if (hasPosition) i4(56) / 1000.0 else null))
             put("ground_speed_mps", jsonValue(if (hasPosition) i4(60) / 1000.0 else null))
             put("heading_of_motion_deg", jsonValue(if (hasPosition) i4(64) * 1e-5 else null))
+            put("speed_accuracy_mps", jsonValue(if (hasPosition) u4(68) / 1000.0 else null))
             put("fix_type", fixType)
             put("fix_ok", fixOk)
             put("rtk_status", rtkStatus)
             put("satellites_used", u1(23))
             put("differential_solution", differential)
+            put("correction_age_s", jsonValue(correctionAge))
         }
     }
 }

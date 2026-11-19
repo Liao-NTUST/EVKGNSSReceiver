@@ -37,6 +37,10 @@ class MqttPublisher {
     var connected = false
         private set
 
+    /** 目前是否真的與 Broker 保持連線（Broker 斷線後也會反映出來）。 */
+    fun isConnected(): Boolean =
+        connected && client?.state?.isConnected == true
+
     // MQTT 發布成功次數
     val publishedCount = AtomicLong(0)
 
