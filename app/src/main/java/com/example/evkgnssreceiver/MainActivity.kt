@@ -38,6 +38,7 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.ConcurrentLinkedQueue
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.atan2
 import kotlin.math.hypot
@@ -118,6 +119,18 @@ class MainActivity : AppCompatActivity() {
     // NTRIP 修正資料與 UBX 指令共用的 USB 寫入鎖
     private val usbWriteLock = Any()
 
+    // 已送出、等待 EVK 回覆 ACK/NAK 的 UBX-CFG-VALSET（依送出順序）
+    private val pendingValsetAcks = ConcurrentLinkedQueue<(Boolean) -> Unit>()
+
+    // EVK 更新率設定的狀態，與實際量到的 NAV-PVT 頻率
+    @Volatile
+    private var rateConfigStatus = "尚未送出"
+
+    @Volatile
+    private var measuredRateHz: Double? = null
+
+    private val recentItowMs = ArrayDeque<Long>()
+
     // 背景 USB 接收執行緒
     private var readThread: Thread? = null
 
@@ -152,6 +165,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var usbDetail: TextView
     private lateinit var usbToggleButton: MaterialButton
     private lateinit var usbDelayButton: MaterialButton
+    private lateinit var usbRateButton: MaterialButton
 
     private lateinit var mqttDot: View
     private lateinit var mqttState: TextView
@@ -410,6 +424,7 @@ class MainActivity : AppCompatActivity() {
         usbDetail = findViewById(R.id.usbDetail)
         usbToggleButton = findViewById(R.id.usbToggleButton)
         usbDelayButton = findViewById(R.id.usbDelayButton)
+        usbRateButton = findViewById(R.id.usbRateButton)
 
         mqttDot = findViewById(R.id.mqttDot)
         mqttState = findViewById(R.id.mqttState)
@@ -439,6 +454,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
         usbDelayButton.setOnClickListener { showDelayDialog() }
+        usbRateButton.setOnClickListener { showRateDialog() }
 
         // MQTT
         mqttToggleButton.setOnClickListener {
@@ -544,12 +560,15 @@ class MainActivity : AppCompatActivity() {
         usbState.text = usbStateLabel
         usbState.setTextColor(color(usbLevel))
         usbDetail.text = if (reading) {
-            "NAV-PVT ${navPvtCount} 筆｜共收到 ${formatBytes(totalBytes)}"
+            val measured = measuredRateHz?.let { String.format(Locale.US, "%.1f Hz", it) } ?: "—"
+            "更新率 實測 $measured（設定 ${savedRateHz()} Hz：$rateConfigStatus）\n" +
+                    "NAV-PVT ${navPvtCount} 筆｜共收到 ${formatBytes(totalBytes)}"
         } else {
             usbMessage
         }
         usbToggleButton.text = if (reading) "中斷 EVK" else "連接 EVK"
         usbDelayButton.text = "延遲補償 ${savedDelayMs()} ms"
+        usbRateButton.text = "更新率 ${savedRateHz()} Hz"
 
         // ---------- MQTT ----------
         val mqttLevel: Level
@@ -822,11 +841,15 @@ class MainActivity : AppCompatActivity() {
             // 每次重新連接 USB 時重設統計
             totalBytes = 0L
             navPvtCount = 0L
+            pendingValsetAcks.clear()
+            synchronized(recentItowMs) { recentItowMs.clear() }
+            measuredRateHz = null
+            rateConfigStatus = "尚未送出"
             navPvtParser = UbxNavPvtParser().apply {
                 onAck = { acked, cls, id ->
+                    // EVK 依收到順序回覆，交給對應的指令處理
                     if (cls == UbxCommands.CLASS_CFG && id == UbxCommands.ID_CFG_VALSET) {
-                        spartnConfigStatus = if (acked) "已確認接受 SPARTN"
-                        else "拒絕設定（NAK），請用 u-center 檢查 CFG-USBINPROT-SPARTN"
+                        pendingValsetAcks.poll()?.invoke(acked)
                     }
                 }
             }
@@ -844,6 +867,9 @@ class MainActivity : AppCompatActivity() {
             val fusion = AndroidVelocityFusion(delayMs)
             velocityFusion = fusion
             startReading(port, fusion)
+
+            // 依設定把 EVK 更新率寫入 RAM（預設 10 Hz）
+            applyNavigationRate()
 
         } catch (e: Exception) {
 
@@ -905,6 +931,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         latestRtk = describeRtk(json)
                         lastNavPvtElapsedMs = SystemClock.elapsedRealtime()
+                        updateMeasuredRate(json.optLong("gps_itow_ms", -1))
                         navPvtCount = parser.validPacketCount
                         json.put("ntrip", ntripJson())
 
@@ -982,11 +1009,12 @@ class MainActivity : AppCompatActivity() {
         ntripForwardErrors.set(0)
 
         // 確保 EVK 的 USB 介面接受 SPARTN，且來源設為 IP（只寫 RAM）
-        spartnConfigStatus = if (writeToEvk(UbxCommands.enableSpartnInputOnUsb())) {
-            "等待回覆"
-        } else {
-            "送出失敗"
+        spartnConfigStatus = "等待回覆"
+        val spartnSent = sendValset(UbxCommands.enableSpartnInputOnUsb()) { acked ->
+            spartnConfigStatus = if (acked) "已確認接受 SPARTN"
+            else "拒絕設定（NAK），請用 u-center 檢查 CFG-USBINPROT-SPARTN"
         }
+        if (!spartnSent) spartnConfigStatus = "送出失敗"
 
         ntripUsage.beginSession()
 
@@ -1116,6 +1144,72 @@ class MainActivity : AppCompatActivity() {
             accuracy = accuracy,
             correctionAge = correctionAge
         )
+    }
+
+    /** 送出 VALSET，並登記收到 ACK/NAK 時要做的事。 */
+    private fun sendValset(command: ByteArray, onResult: (Boolean) -> Unit): Boolean {
+
+        synchronized(usbWriteLock) {
+            if (serialPort == null) return false
+            pendingValsetAcks.add(onResult)
+            if (writeToEvk(command)) return true
+            pendingValsetAcks.remove(onResult)
+            return false
+        }
+    }
+
+    // --------------------------------------------------
+    // 9-1-1. EVK 更新率
+    // --------------------------------------------------
+
+    private fun savedRateHz(): Int =
+        getPreferences(Context.MODE_PRIVATE).getInt("nav_rate_hz", 10)
+            .takeIf { it in UbxCommands.SUPPORTED_RATES_HZ } ?: 10
+
+    private fun applyNavigationRate() {
+
+        val hz = savedRateHz()
+        // 先標記為等待中，避免 ACK 很快回來時被覆蓋
+        rateConfigStatus = "等待回覆"
+        val sent = sendValset(UbxCommands.setNavigationRate(hz)) { acked ->
+            rateConfigStatus = if (acked) "已確認" else "EVK 拒絕（NAK）"
+            runOnUiThread { refreshUi() }
+        }
+        if (!sent) rateConfigStatus = "送出失敗"
+        synchronized(recentItowMs) { recentItowMs.clear() }
+        measuredRateHz = null
+        refreshUi()
+    }
+
+    private fun showRateDialog() {
+
+        val rates = UbxCommands.SUPPORTED_RATES_HZ
+        val current = rates.indexOf(savedRateHz()).coerceAtLeast(0)
+        MaterialAlertDialogBuilder(this)
+            .setTitle("EVK 定位更新率")
+            .setSingleChoiceItems(rates.map { "$it Hz" }.toTypedArray(), current) { dialog, which ->
+                getPreferences(Context.MODE_PRIVATE).edit().putInt("nav_rate_hz", rates[which]).apply()
+                dialog.dismiss()
+                if (reading) applyNavigationRate() else refreshUi()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** USB 執行緒呼叫：用最近 10 筆 iTOW 算出實際更新率。 */
+    private fun updateMeasuredRate(itowMs: Long) {
+
+        if (itowMs < 0) return
+        synchronized(recentItowMs) {
+            val last = recentItowMs.lastOrNull()
+            // 時間倒退或中斷超過 3 秒就重新計算
+            if (last != null && (itowMs <= last || itowMs - last > 3_000)) recentItowMs.clear()
+            recentItowMs.addLast(itowMs)
+            while (recentItowMs.size > 11) recentItowMs.removeFirst()
+            measuredRateHz = if (recentItowMs.size >= 3) {
+                (recentItowMs.size - 1) * 1000.0 / (recentItowMs.last() - recentItowMs.first())
+            } else null
+        }
     }
 
     // --------------------------------------------------
